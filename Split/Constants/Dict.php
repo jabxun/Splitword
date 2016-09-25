@@ -87,4 +87,15 @@ class Dict
      * ascii小写字母结束.
      */
     const WORD_EN_LOW_ENDED = 0X7B;
+
+    /**
+     * 字典二进制索引长度-字节.
+     */
+    const BINARY_INDEX_LENGTH = 0X8;
+    /**
+     * 字典索引左移长度.
+     */
+    const BINARY_INDEX_OFFSET = 0X3;
+
+    const BINARY_MAX_OFFSET = OX400;
 }

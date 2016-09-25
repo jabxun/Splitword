@@ -1,7 +1,9 @@
 <?php
 namespace Split;
 
+use Exception;
 use Split\Character;
+use Split\Stream\FileStream;
 use Split\Constants\Dict as DictConst;
 use Split\Constants\Character as CharConst;
 
@@ -40,7 +42,13 @@ class Dict
      */
     public static function open()
     {
-        self::$mainDictHandle = fopen(self::getDictDir(), DictConst::MODE_READ);
+        self::$mainDictHandle = FileStream::open(self::getDictDir(), DictConst::MODE_READ);
+        if (! self::$mainDictHandle->isReadable()) {
+            throw new Exception('字典不可读');
+        }
+        if (! self::$mainDictHandle->isSeekable()) {
+            throw new Exception('字典不可移动查阅');
+        }
         self::loadAssistDict();
         self::getAsciiDict();
     }
@@ -56,14 +64,14 @@ class Dict
         if (empty(self::$mainDictHandle)) {
             self::open();
         }
-        fseek(self::$mainDictHandle, $key << 3, SEEK_SET);
-        $wordIndex = unpack('I1s/n1l/n1c', fread(self::$mainDictHandle, 8));
+        self::$mainDictHandle->seek($key << DictConst::BINARY_INDEX_OFFSET);
+        $wordIndex = unpack('I1s/n1l/n1c', self::$mainDictHandle->read(DictConst::BINARY_INDEX_LENGTH));
         if ($wordIndex['l'] == 0) {
             return [];
         }
-        fseek(self::$mainDictHandle, $wordIndex['s'], SEEK_SET);
+        self::$mainDictHandle->seek($wordIndex['s']);
 
-        return  @unserialize(fread(self::$mainDictHandle, $wordIndex['l']));
+        return  @unserialize(self::$mainDictHandle->read($wordIndex['l']));
     }
     /**
      * 获取词组索引树.
@@ -88,7 +96,7 @@ class Dict
     public static function close()
     {
         if (self::$mainDictHandle !== false) {
-            @fclose(self::$mainDictHandle);
+            self::$mainDictHandle->close();
         }
     }
 
@@ -170,8 +178,8 @@ class Dict
         if (!file_exists($inputFile)) {
             return false;
         }
-        $fp = fopen($inputFile, 'r');
-        while ($line = fgets($fp, 128)) {
+        $fp = FileStream::open(self::getDictDir(), DictConst::MODE_READ);
+        while ($line = $fp->getLine(DictConst::BINARY_MAX_OFFSET)) {
             if ($line == '') {
                 continue;
             }
@@ -192,10 +200,10 @@ class Dict
                     break;
             }
         }
-        fclose($fp);
-        $fp = fopen($targetFile, 'w');
+        $fp->close();
+        $fp = FileStream::open(self::getDictDir(), DictConst::MODE_WRITE);
         $allData = '';
-        $startPosition = DictConst::WORD_INDEX_MASK << 3;
+        $startPosition = DictConst::WORD_INDEX_MASK << DictConst::BINARY_INDEX_OFFSET;
 
         for ($i=0; $i < DictConst::WORD_INDEX_MASK; $i++) {
             if (!isset($trieArray[$i])) {
@@ -207,11 +215,11 @@ class Dict
                 $indexArray = array($startPosition,$dataLength,count($trieArray[$i]));
                 $startPosition += $dataLength;
             }
-            fwrite($fp, pack("Inn", $indexArray[0], $indexArray[1], $indexArray[2]));
+            $fp->write(pack("Inn", $indexArray[0], $indexArray[1], $indexArray[2]));
         }
         unset($trieArray);
-        fwrite($fp, $allData);
-        fclose($fp);
+        $fp->write($allData);
+        $fp->close();
         return true;
     }
 }
